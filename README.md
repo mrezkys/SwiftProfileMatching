@@ -215,84 +215,10 @@ Profile Matching is a multi-criteria decision-making method used to evaluate alt
 1. **Define criteria and target values** - Establish what factors are important and what their ideal values should be
 2. **Categorize criteria** - Typically divided into "core factors" (essential criteria) and "secondary factors" (supporting criteria)
 3. **Assign weights** - Determine the relative importance of each criterion
-4. **Calculate gap values** - Measure how closely each alternative matches the ideal profile for each criterion
-5. **Calculate weighted scores** - Combine gap values using appropriate weighting schemes
-6. **Rank alternatives** - Order alternatives based on their final scores
-
-### Mathematical Foundation
-
-The Profile Matching method is built on several key mathematical formulations:
-
-#### Final Score Calculation
-
-The final score is a weighted combination of core and secondary factor scores:
-
-$$\text{Final Score} = (W_{cf} \times \text{CF}) + (W_{sf} \times \text{SF})$$
-
-Where:
-- $W_{cf}$ = Weight for core factors (typically 0.6 or 60%)
-- $\text{CF}$ = Core factor score
-- $W_{sf}$ = Weight for secondary factors (typically 0.4 or 40%)
-- $\text{SF}$ = Secondary factor score
-
-#### Factor Score Calculation
-
-Each factor score is a weighted average of gap values:
-
-$$\text{Factor Score} = \frac{\sum_{i=1}^{n} (w_i \times g_i)}{\sum_{i=1}^{n} w_i}$$
-
-Where:
-- $w_i$ = Weight of criterion $i$ (in decimal form)
-- $g_i$ = Gap value for criterion $i$
-- $n$ = Number of criteria in the factor group
-
-#### Gap Value Calculation (Standard Method)
-
-For core factors:
-
-For perfect match (Δ = 0):
-$$g_i = 5.0$$
-
-For exceeding target (Δ > 0):
-$$g_i = \min(4.5, 5.0 - 0.5 \times \Delta)$$
-
-For below target (Δ < 0):
-$$g_i = \max(0, 5.0 + \Delta)$$
-
-For secondary factors:
-
-For perfect match (Δ = 0):
-$$g_i = 5.0$$
-
-For exceeding target (Δ > 0):
-$$g_i = \min(5.0, 5.0 - 0.25 \times \Delta)$$
-
-For below target (Δ < 0):
-$$g_i = \max(0, 5.0 + 0.75 \times \Delta)$$
-
-Where $\Delta = \text{Actual Value} - \text{Target Value}$
-
-#### Gap Value Calculation (Custom Method)
-
-For perfect match (Δ = 0):
-$$g_i = P$$
-
-For exceeding target (Δ > 0):
-$$g_i = \max(0, \min(M, P - E \times \Delta))$$
-
-For below target (Δ < 0):
-$$g_i = \max(0, \min(M, P + B \times \Delta))$$
-
-Where:
-- $P$ = Perfect match score
-- $E$ = Exceeds penalty
-- $B$ = Below penalty
-- $M$ = Maximum possible score
-- $\Delta = \text{Actual Value} - \text{Target Value}$
-
-#### Normalization Formula
-
-$$\text{Normalized Value} = \frac{\text{Value} - \text{Min}}{\text{Max} - \text{Min}} \times (\text{TargetMax} - \text{TargetMin}) + \text{TargetMin}$$
+4. **Optional: Normalize input values** - Standardize values across different scales (optional, disabled by default)
+5. **Calculate gap values** - Measure how closely each alternative matches the ideal profile for each criterion
+6. **Calculate weighted scores** - Combine gap values using appropriate weighting schemes
+7. **Rank alternatives** - Order alternatives based on their final scores
 
 ### Step-by-Step Process
 
@@ -346,9 +272,99 @@ let alternatives = [
 ]
 ```
 
-#### 3. Calculate Gap Values
+#### 3. Configure Profile Matching (Optional)
 
-For each criterion, we calculate how closely the alternative matches the target:
+By default, the package uses standard settings, but you can optionally configure various aspects including normalization:
+
+```swift
+// Optional: Create a custom configuration with normalization enabled
+let config = ProfileMatchingConfiguration(
+    gapCalculationStrategy: .standard,
+    coreFactorWeight: 0.6,
+    secondaryFactorWeight: 0.4,
+    normalizationMethod: .global,  // Enable normalization
+    weightCalculation: .direct,
+    scoreRange: (0.0, 5.0)
+)
+
+// Initialize with custom configuration
+let profileMatching = ProfileMatching(criteria: criteria, configuration: config)
+
+// Or use default configuration (no normalization)
+// let profileMatching = ProfileMatching(criteria: criteria)
+```
+
+#### 4. Optional: Normalize Input Values
+
+If normalization is enabled in the configuration (it's disabled by default), the package will automatically normalize input values before gap calculation.
+
+**Mathematical Formula:**
+
+$$\text{Normalized Value} = \frac{\text{Value} - \text{Min}}{\text{Max} - \text{Min}} \times (\text{TargetMax} - \text{TargetMin}) + \text{TargetMin}$$
+
+SwiftProfileMatching supports three normalization approaches:
+
+1. **No Normalization (`none`)** - Use raw values directly (default)
+2. **Global Normalization (`global`)** - Standardize values across all alternatives
+3. **Local Normalization (`local`)** - Normalize each criterion separately
+
+When enabled, the package internally performs normalization:
+
+```swift
+// This happens internally if normalization is enabled
+// Excerpt from calculateMatchingForAlternative() method
+let processedValues = normalizeInputValues(alternative.criteriaValues)
+```
+
+In our default example, normalization is skipped since we're using the same 0-5 scale for all criteria.
+
+#### 5. Calculate Gap Values
+
+For each criterion, we calculate how closely the alternative matches the target.
+
+**Mathematical Formula (Standard Method):**
+
+For core factors:
+
+For perfect match (Δ = 0):
+$$g_i = 5.0$$
+
+For exceeding target (Δ > 0):
+$$g_i = \min(4.5, 5.0 - 0.5 \times \Delta)$$
+
+For below target (Δ < 0):
+$$g_i = \max(0, 5.0 + \Delta)$$
+
+For secondary factors:
+
+For perfect match (Δ = 0):
+$$g_i = 5.0$$
+
+For exceeding target (Δ > 0):
+$$g_i = \min(5.0, 5.0 - 0.25 \times \Delta)$$
+
+For below target (Δ < 0):
+$$g_i = \max(0, 5.0 + 0.75 \times \Delta)$$
+
+Where $\Delta = \text{Actual Value} - \text{Target Value}$
+
+**Custom Gap Calculation Method:**
+
+For perfect match (Δ = 0):
+$$g_i = P$$
+
+For exceeding target (Δ > 0):
+$$g_i = \max(0, \min(M, P - E \times \Delta))$$
+
+For below target (Δ < 0):
+$$g_i = \max(0, \min(M, P + B \times \Delta))$$
+
+Where:
+- $P$ = Perfect match score
+- $E$ = Exceeds penalty
+- $B$ = Below penalty
+- $M$ = Maximum possible score
+- $\Delta = \text{Actual Value} - \text{Target Value}$
 
 For John Smith:
 - Experience: Target 4.0, Actual 5.0, Gap = +1.0
@@ -373,15 +389,29 @@ For Jane Doe:
 These calculations are performed by the `calculateGap()` method:
 
 ```swift
-// The package internally calculates the gap values using the chosen strategy
-let gap = calculateGap(targetValue: criterion.targetValue, 
-                       actualValue: value, 
-                       type: criterion.type)
+// The package internally calculates the gap values
+for criterion in criteria {
+    if let value = processedValues[criterion.name] {
+        let gap = calculateGap(targetValue: criterion.targetValue, 
+                              actualValue: value, 
+                              type: criterion.type)
+        gapDetails[criterion.name] = gap
+    }
+}
 ```
 
-#### 4. Calculate Core Factor and Secondary Factor Scores
+#### 6. Calculate Core Factor and Secondary Factor Scores
 
-Next, we calculate weighted scores for core and secondary factors separately:
+Next, we calculate weighted scores for core and secondary factors separately.
+
+**Mathematical Formula:**
+
+$$\text{Factor Score} = \frac{\sum_{i=1}^{n} (w_i \times g_i)}{\sum_{i=1}^{n} w_i}$$
+
+Where:
+- $w_i$ = Weight of criterion $i$ (in decimal form)
+- $g_i$ = Gap value for criterion $i$
+- $n$ = Number of criteria in the factor group
 
 For John Smith:
 - Core Factor Score: 
@@ -411,9 +441,19 @@ let coreFactorScore = calculateWeightedScore(for: coreFactors, using: gapDetails
 let secondaryFactorScore = calculateWeightedScore(for: secondaryFactors, using: gapDetails)
 ```
 
-#### 5. Calculate Final Scores
+#### 7. Calculate Final Scores
 
-Finally, we combine core and secondary factor scores with their respective weights (default is 60% for core, 40% for secondary):
+Finally, we combine core and secondary factor scores with their respective weights.
+
+**Mathematical Formula:**
+
+$$\text{Final Score} = (W_{cf} \times \text{CF}) + (W_{sf} \times \text{SF})$$
+
+Where:
+- $W_{cf}$ = Weight for core factors (typically 0.6 or 60%)
+- $\text{CF}$ = Core factor score
+- $W_{sf}$ = Weight for secondary factors (typically 0.4 or 40%)
+- $\text{SF}$ = Secondary factor score
 
 For John Smith:
 - Final Score: (4.7 × 0.6) + (4.75 × 0.4) = 2.82 + 1.9 = 4.72
@@ -429,7 +469,7 @@ finalScore = (configuration.coreFactorWeight * coreFactorScore) +
              (configuration.secondaryFactorWeight * secondaryFactorScore)
 ```
 
-#### 6. Rank and Analyze
+#### 8. Rank and Analyze
 
 The package then sorts alternatives by final score:
 
@@ -460,62 +500,6 @@ let influential = RankingHelper.findMostInfluentialCriteria(from: results)
 // Would show which criteria created the most differentiation
 ```
 
-This end-to-end process is encapsulated by the package, making it easy to implement sophisticated decision support while handling all the mathematical complexity behind the scenes.
-
-### Gap Calculation
-
-The core of Profile Matching is the gap calculation, which measures the deviation between an alternative's value and the target value for each criterion. This package offers multiple gap calculation strategies:
-
-#### Standard Gap Method
-
-The standard gap method (`gapCalculationStrategy: .standard`) uses different scoring approaches based on whether a criterion is a core or secondary factor:
-
-```swift
-// Implemented in calculateGap() function
-switch type {
-case .coreFactor:
-    if gap == 0 {
-        return 5.0  // Perfect match
-    } else if gap > 0 {
-        // Exceeds target (stricter penalty)
-        return min(4.5, 5.0 - (0.5 * gap))
-    } else {
-        // Below target (severe penalty)
-        return max(0, 5.0 + gap)
-    }
-    
-case .secondaryFactor:
-    if gap == 0 {
-        return 5.0  // Perfect match
-    } else if gap > 0 {
-        // Exceeds target (lenient penalty)
-        return min(5.0, 5.0 - (0.25 * gap))
-    } else {
-        // Below target (moderate penalty)
-        return max(0, 5.0 + (0.75 * gap))
-    }
-}
-```
-
-#### Custom Gap Calculation
-
-For specialized scenarios, you can define custom gap calculations with configured penalties:
-
-```swift
-// Custom configuration example
-let config = ProfileMatchingConfiguration(
-    gapCalculationStrategy: .custom(
-        perfectMatchScore: 10.0,  // Score for exact matches
-        exceedsPenalty: 1.0,      // Penalty per unit exceeding target
-        belowPenalty: 2.0,        // Penalty per unit below target
-        maxScore: 10.0            // Maximum possible score
-    ),
-    scoreRange: (0.0, 10.0)
-)
-```
-
-This implementation allows different penalties for values that exceed versus fall below targets, offering fine-tuned control for asymmetric preferences.
-
 ### Core vs. Secondary Factors
 
 Profile Matching distinguishes between different types of criteria:
@@ -530,14 +514,6 @@ public enum GapType: Sendable {
     case coreFactor
     case secondaryFactor
 }
-```
-
-The final score typically combines core and secondary factors with different weights:
-
-```swift
-// From calculateMatchingForAlternative()
-finalScore = (configuration.coreFactorWeight * coreFactorScore) +
-             (configuration.secondaryFactorWeight * secondaryFactorScore)
 ```
 
 ### Weighted Scoring
@@ -564,16 +540,6 @@ for criterion in criteria {
 // Normalize by total weight
 return totalWeight > 0 ? weightedSum / totalWeight : 0
 ```
-
-### Normalization Techniques
-
-Different normalization methods are available for input values:
-
-1. **None** - Use raw values without normalization
-2. **Global** - Normalize all values across all alternatives
-3. **Local** - Normalize each criterion separately
-
-These help handle criteria measured on different scales.
 
 ### Ranking and Analysis
 
