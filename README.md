@@ -2,6 +2,7 @@
 
 A Swift Package for implementing Profile Matching Method - a popular technique used in Decision Support Systems (DSS).
 
+
 ## Overview
 
 Profile Matching is a DSS method that compares alternatives against an ideal profile (criteria) to calculate scores and rankings. It's widely applicable in various decision-making scenarios:
@@ -155,7 +156,7 @@ Final ranking:
 
 <details>
 <summary><h2>Advanced Usage</h2></summary>
-
+<img width="782" alt="Screenshot 2025-03-18 at 16 26 18" src="https://github.com/user-attachments/assets/760fa3f0-5c7f-4e8e-ac4d-5f723ab8f0e8" />
 ### Custom Configuration
 
 You can customize the profile matching calculation with a configuration:
