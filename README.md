@@ -76,7 +76,7 @@ let criteria = [
 let alternatives = [
     ProfileMatching.Alternative(
         id: "A001", 
-        name: "Option One", 
+        name: "Candidate One", 
         criteriaValues: [
             "Experience": 5.0,
             "Education": 5.0,
@@ -86,7 +86,7 @@ let alternatives = [
     ),
     ProfileMatching.Alternative(
         id: "A002", 
-        name: "Option Two", 
+        name: "Candidate Two", 
         criteriaValues: [
             "Experience": 3.0,
             "Education": 5.0,
@@ -96,20 +96,60 @@ let alternatives = [
     )
 ]
 
-// 3. Create the profile matching calculator
+// 3. Create the profile matching calculator with default configuration
+// (Uses .continuous(type: .standard) gap calculation)
 let profileMatching = ProfileMatching(criteria: criteria)
 
-// 4. Calculate matching results
+// 4. Alternatively, create with a custom configuration
+// let config = ProfileMatchingConfiguration(
+//     gapCalculationStrategy: .continuous(type: .standard),
+//     coreFactorWeight: 0.6,
+//     secondaryFactorWeight: 0.4
+// )
+// let profileMatching = ProfileMatching(criteria: criteria, configuration: config)
+
+// 5. Calculate matching results
 let results = profileMatching.calculateMatching(for: alternatives)
 
-// 5. Generate a ranking report
+// 6. Print detailed results for top candidate
+print("Detailed results for \(results[0].alternative.name):")
+print("- Core Factor Score: \(results[0].coreFactorScore)")
+print("- Secondary Factor Score: \(results[0].secondaryFactorScore)")
+print("- Final Score: \(results[0].finalScore)")
+print("- Gap Details:")
+for (criterion, score) in results[0].gapDetails {
+    print("  - \(criterion): \(score)")
+}
+
+// 7. Generate a ranking report
 let report = RankingHelper.createReport(
     from: results, 
     scoreFormat: .percentage
 )
 
-// 6. Print the summary
-print(report.generateTextSummary())
+// 8. Print the summary
+print("\nFinal ranking:")
+for (index, result) in results.enumerated() {
+    print("\(index + 1). \(result.alternative.name): \(result.finalScore)")
+}
+```
+
+The output will look something like:
+
+```
+Detailed results for Candidate One:
+- Core Factor Score: 4.7
+- Secondary Factor Score: 4.75
+- Final Score: 4.72
+- Gap Details:
+  - Experience: 4.5
+  - Education: 5.0
+  - Communication: 4.75
+  - Teamwork: 4.75
+
+Final ranking:
+1. Candidate One: 4.72
+2. Candidate Two: 4.41
 ```
 </details>
 
@@ -122,12 +162,12 @@ You can customize the profile matching calculation with a configuration:
 
 ```swift
 let config = ProfileMatchingConfiguration(
-    gapCalculationStrategy: .custom(
+    gapCalculationStrategy: .continuous(type: .custom(
         perfectMatchScore: 10.0,
         exceedsPenalty: 1.0,
         belowPenalty: 2.0,
         maxScore: 10.0
-    ),
+    )),
     coreFactorWeight: 0.7,
     secondaryFactorWeight: 0.3,
     normalizationMethod: .global,
@@ -136,6 +176,156 @@ let config = ProfileMatchingConfiguration(
 )
 
 let profileMatching = ProfileMatching(criteria: criteria, configuration: config)
+```
+
+### Continuous Gap Calculation
+
+For scenarios where you need formula-based gap calculations with smooth transitions between values, use the continuous gap calculation strategies:
+
+```swift
+// 1. Standard method (default)
+// Different formulas for core and secondary factors
+let standardConfig = ProfileMatchingConfiguration(
+    gapCalculationStrategy: .continuous(type: .standard),
+    // Other parameters...
+)
+
+// 2. Simple method
+// Uses normalized absolute difference
+let simpleConfig = ProfileMatchingConfiguration(
+    gapCalculationStrategy: .continuous(type: .simple),
+    // Other parameters...
+)
+
+// 3. Custom method with configurable parameters
+let customConfig = ProfileMatchingConfiguration(
+    gapCalculationStrategy: .continuous(type: .custom(
+        perfectMatchScore: 10.0,  // Score for perfect match (gap = 0)
+        exceedsPenalty: 1.0,      // Penalty per unit when exceeding target
+        belowPenalty: 2.0,        // Penalty per unit when below target
+        maxScore: 10.0            // Maximum possible score
+    )),
+    // Other parameters...
+)
+```
+
+Understanding continuous calculation types:
+
+1. **Standard**: Uses the classic Profile Matching formula with different calculations for core vs. secondary factors:
+   - For core factors: Stricter penalties for missing targets
+   - For secondary factors: More lenient penalties
+   - Perfect match always gets 5.0
+
+2. **Simple**: Uses normalized absolute difference:
+   - Formula: 5.0 - min(5.0, abs(gap))
+   - Provides a linear penalty based on distance from target
+   - Good for simple cases where you want equal penalties for exceeding or falling below target
+
+3. **Custom**: Fully configurable formula with parameters:
+   - `perfectMatchScore`: Score assigned for exact matches (gap = 0)
+   - `exceedsPenalty`: Penalty per unit when exceeding target (gap > 0)
+   - `belowPenalty`: Penalty per unit when below target (gap < 0)
+   - `maxScore`: Maximum possible score cap
+
+Example scores using different continuous methods for gap value Δ:
+
+```
+Gap (Δ)  | Standard (Core) | Standard (Secondary) | Simple | Custom (10,1,2,10)
+---------|----------------|---------------------|--------|------------------
+  -2.0   |     3.0        |        3.5          |   3.0  |       6.0
+  -1.0   |     4.0        |        4.25         |   4.0  |       8.0
+   0.0   |     5.0        |        5.0          |   5.0  |      10.0
+  +1.0   |     4.5        |        4.75         |   4.0  |       9.0
+  +2.0   |     4.0        |        4.5          |   3.0  |       8.0
+```
+
+### Discrete Gap Calculation
+
+For scenarios where gap values should map to discrete scores (like categorical data), use the discrete gap calculation strategy with various handling methods:
+
+```swift
+// Create gap-score mapping from a dictionary
+let gapScoreMap: [Double: Double] = [
+    -3.0: 1.0,  // Far below target
+    -2.0: 2.0,  // Below target
+    -1.0: 3.5,  // Slightly below target
+     0.0: 5.0,  // Perfect match
+     1.0: 4.0,  // Slightly above target
+     2.0: 3.0,  // Above target
+     3.0: 2.0   // Far above target
+]
+
+let mappingPairs = ProfileMatchingConfiguration.createDiscreteMapping(gapToScoreMap: gapScoreMap)
+
+// Create configuration with different handling methods for undefined gaps:
+
+// 1. Basic method (nearest neighbor approach)
+let basicConfig = ProfileMatchingConfiguration(
+    gapCalculationStrategy: .discrete(mappingPairs: mappingPairs),  // Uses .basic by default
+    // Other parameters...
+)
+
+// 2. Linear interpolation between defined points
+let interpolationConfig = ProfileMatchingConfiguration(
+    gapCalculationStrategy: .discrete(mappingPairs: mappingPairs, handlingMethod: .interpolation),
+    // Other parameters...
+)
+
+// 3. Nearest neighbor (finds closest defined gap)
+let nearestConfig = ProfileMatchingConfiguration(
+    gapCalculationStrategy: .discrete(mappingPairs: mappingPairs, handlingMethod: .nearestNeighbor),
+    // Other parameters...
+)
+
+// 4. Threshold method (uses defined point as the start of a range)
+let thresholdConfig = ProfileMatchingConfiguration(
+    gapCalculationStrategy: .discrete(mappingPairs: mappingPairs, handlingMethod: .threshold),
+    // Other parameters...
+)
+
+// 5. Default value (uses specified score for undefined gaps)
+let defaultConfig = ProfileMatchingConfiguration(
+    gapCalculationStrategy: .discrete(mappingPairs: mappingPairs, handlingMethod: .defaultValue(score: 2.0)),
+    // Other parameters...
+)
+
+// Or use convenience methods with handling method:
+
+// Symmetric scoring (same penalty for above/below target)
+let symmetricConfig = ProfileMatchingConfiguration.discreteSymmetric(
+    perfectMatchScore: 5.0,
+    maxGap: 5,
+    maxScore: 5.0,
+    handlingMethod: .threshold  // Choose a handling method
+)
+
+// Asymmetric scoring (different penalties for above/below target)
+let asymmetricConfig = ProfileMatchingConfiguration.discreteAsymmetric(
+    perfectMatchScore: 5.0,
+    maxGap: 5,
+    exceedPenalty: 0.5,   // Lower penalty for exceeding target
+    belowPenalty: 1.0,    // Higher penalty for falling below target
+    maxScore: 5.0,
+    handlingMethod: .interpolation  // Choose a handling method
+)
+```
+
+Understanding gap handling methods:
+
+1. **Basic**: Simple nearest neighbor approach - finds closest defined gap value.
+2. **Interpolation**: Uses linear interpolation between nearest defined points (good for smooth transitions).
+3. **Nearest Neighbor**: Explicitly finds the closest defined gap by distance.
+4. **Threshold**: Each defined gap value represents the start of a range up to the next defined gap.
+5. **Default Value**: Uses a specified default score for any undefined gaps.
+
+Example of different methods on an undefined gap value:
+
+```swift
+// For a gap of -1.5 with defined mappings at -2.0 (score 2.0) and -1.0 (score 3.5):
+// - Interpolation:    2.75 (halfway between 2.0 and 3.5)
+// - Nearest Neighbor: 2.0  (closer to -2.0 than -1.0)
+// - Threshold:        2.0  (falls within range starting at -2.0)
+// - Default Value:    1.0  (uses the specified default value)
 ```
 
 ### Normalizing Input Values
@@ -279,7 +469,7 @@ By default, the package uses standard settings, but you can optionally configure
 ```swift
 // Optional: Create a custom configuration with normalization enabled
 let config = ProfileMatchingConfiguration(
-    gapCalculationStrategy: .standard,
+    gapCalculationStrategy: .continuous(type: .standard),
     coreFactorWeight: 0.6,
     secondaryFactorWeight: 0.4,
     normalizationMethod: .global,  // Enable normalization
@@ -365,6 +555,23 @@ Where:
 - $B$ = Below penalty
 - $M$ = Maximum possible score
 - $\Delta = \text{Actual Value} - \text{Target Value}$
+
+**Discrete Gap Calculation Method:**
+
+Instead of using continuous functions, this method uses explicit gap-to-score mappings:
+
+$$g_i = \text{score from mapping table where gap} = \Delta$$
+
+For gaps between defined values, linear interpolation is used:
+
+$$g_i = s_1 + (s_2 - s_1) \times \frac{\Delta - g_1}{g_2 - g_1}$$
+
+Where:
+- $s_1, s_2$ = Scores for the two closest defined gaps
+- $g_1, g_2$ = Gap values that bracket the actual gap
+- $\Delta = \text{Actual Value} - \text{Target Value}$
+
+This allows for arbitrary and non-linear scoring patterns that can't be expressed with simple mathematical formulas.
 
 For John Smith:
 - Experience: Target 4.0, Actual 5.0, Gap = +1.0
