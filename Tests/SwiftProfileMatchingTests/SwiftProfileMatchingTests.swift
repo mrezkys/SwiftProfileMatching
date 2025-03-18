@@ -106,7 +106,7 @@ struct ConfigurationTests {
         
         // Create a custom configuration
         let customConfig = ProfileMatchingConfiguration(
-            gapCalculationStrategy: .simple,
+            gapCalculationStrategy: .continuous(type: .simple),
             coreFactorWeight: 0.7,
             secondaryFactorWeight: 0.3,
             normalizationMethod: .global,
@@ -139,12 +139,12 @@ struct ConfigurationTests {
         
         // Create a custom configuration with custom gap calculation
         let customConfig = ProfileMatchingConfiguration(
-            gapCalculationStrategy: .custom(
+            gapCalculationStrategy: .continuous(type: .custom(
                 perfectMatchScore: 10.0,
                 exceedsPenalty: 1.0,
                 belowPenalty: 2.0,
                 maxScore: 10.0
-            ),
+            )),
             scoreRange: (0.0, 10.0) // Match the score range to our custom scores
         )
         
