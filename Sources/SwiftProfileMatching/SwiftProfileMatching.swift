@@ -114,7 +114,7 @@ public class ProfileMatching: @unchecked Sendable {
     public convenience init(criteria: [Criterion], coreFactorWeight: Double = 0.6, secondaryFactorWeight: Double = 0.4) {
         // Use the standard configuration but override the weight factors
         let config = ProfileMatchingConfiguration(
-            gapCalculationStrategy: .standard,
+            gapCalculationStrategy: .continuous(type: .standard),
             coreFactorWeight: coreFactorWeight,
             secondaryFactorWeight: secondaryFactorWeight,
             normalizationMethod: .none,
@@ -268,53 +268,155 @@ public class ProfileMatching: @unchecked Sendable {
         let gap = actualValue - targetValue
         
         switch configuration.gapCalculationStrategy {
-        case .standard:
-            // Standard gap calculation based on DSS literature
-            // Scale is typically 0-5 where: 0 = not match at all, 5 = perfect match
-            switch type {
-            case .coreFactor:
-                // Core factors often use a stricter gap calculation
-                if gap == 0 {
-                    return 5.0  // Perfect match
-                } else if gap > 0 {
-                    // Exceeds expectations
-                    return min(4.5, 5.0 - (0.5 * gap))
-                } else {
-                    // Below expectations (more severe penalty)
-                    return max(0, 5.0 + gap)
+        case .continuous(let calculationType):
+            switch calculationType {
+            case .standard:
+                // Standard gap calculation based on DSS literature
+                // Scale is typically 0-5 where: 0 = not match at all, 5 = perfect match
+                switch type {
+                case .coreFactor:
+                    // Core factors often use a stricter gap calculation
+                    if gap == 0 {
+                        return 5.0  // Perfect match
+                    } else if gap > 0 {
+                        // Exceeds expectations
+                        return min(4.5, 5.0 - (0.5 * gap))
+                    } else {
+                        // Below expectations (more severe penalty)
+                        return max(0, 5.0 + gap)
+                    }
+                    
+                case .secondaryFactor:
+                    // Secondary factors can use a more lenient gap calculation
+                    if gap == 0 {
+                        return 5.0  // Perfect match
+                    } else if gap > 0 {
+                        // Exceeds expectations
+                        return min(5.0, 5.0 - (0.25 * gap))
+                    } else {
+                        // Below expectations
+                        return max(0, 5.0 + (0.75 * gap))
+                    }
                 }
                 
-            case .secondaryFactor:
-                // Secondary factors can use a more lenient gap calculation
+            case .custom(let perfectMatchScore, let exceedsPenalty, let belowPenalty, let maxScore):
+                // Custom gap calculation with parameters
                 if gap == 0 {
-                    return 5.0  // Perfect match
+                    return perfectMatchScore  // Perfect match gets perfect score
                 } else if gap > 0 {
                     // Exceeds expectations
-                    return min(5.0, 5.0 - (0.25 * gap))
+                    return max(0, min(maxScore, perfectMatchScore - (exceedsPenalty * gap)))
                 } else {
                     // Below expectations
-                    return max(0, 5.0 + (0.75 * gap))
+                    return max(0, min(maxScore, perfectMatchScore + (belowPenalty * gap)))
                 }
+                
+            case .simple:
+                // Simple gap calculation - just return the normalized difference
+                // The closer to 0, the better
+                let normalizedGap = 5.0 - min(5.0, abs(gap))
+                return normalizedGap
             }
             
-        case .custom(let perfectMatchScore, let exceedsPenalty, let belowPenalty, let maxScore):
-            // Custom gap calculation with parameters
-            if gap == 0 {
-                return perfectMatchScore  // Perfect match gets perfect score
-            } else if gap > 0 {
-                // Exceeds expectations
-                return max(0, min(maxScore, perfectMatchScore - (exceedsPenalty * gap)))
-            } else {
-                // Below expectations
-                return max(0, min(maxScore, perfectMatchScore + (belowPenalty * gap)))
+        case .discrete(let mappingPairs, let handlingMethod):
+            // If no mapping pairs provided, return 0
+            guard !mappingPairs.isEmpty else {
+                return 0.0
             }
             
-        case .simple:
-            // Simple gap calculation - just return the normalized difference
-            // The closer to 0, the better
-            let normalizedGap = 5.0 - min(5.0, abs(gap))
-            return normalizedGap
+            // Check if we have an exact match
+            if let exactMatch = mappingPairs.first(where: { $0.gap == gap }) {
+                return exactMatch.score
+            }
+            
+            // Sort the mapping pairs by gap value
+            let sortedPairs = mappingPairs.sorted()
+            
+            // If gap is smaller than the smallest defined gap, use the first pair's score
+            if gap < sortedPairs.first!.gap {
+                return sortedPairs.first!.score
+            }
+            
+            // If gap is larger than the largest defined gap, use the last pair's score
+            if gap > sortedPairs.last!.gap {
+                return sortedPairs.last!.score
+            }
+            
+            // Handle based on the specified method
+            switch handlingMethod {
+            case .basic:
+                // Find the nearest gap value (basic approach - same as old discrete)
+                return findNearestPair(in: sortedPairs, for: gap).score
+                
+            case .interpolation:
+                // Find the two closest pairs for interpolation
+                var lowerPair: ProfileMatchingConfiguration.GapScorePair?
+                var upperPair: ProfileMatchingConfiguration.GapScorePair?
+                
+                for pair in sortedPairs {
+                    if pair.gap < gap {
+                        lowerPair = pair
+                    } else if pair.gap > gap {
+                        upperPair = pair
+                        break
+                    }
+                }
+                
+                // Linear interpolation between the two closest pairs
+                if let lower = lowerPair, let upper = upperPair {
+                    let gapRange = upper.gap - lower.gap
+                    let scoreRange = upper.score - lower.score
+                    let proportion = (gap - lower.gap) / gapRange
+                    return lower.score + (proportion * scoreRange)
+                }
+                
+                // Fallback to nearest neighbor if interpolation fails
+                return findNearestPair(in: sortedPairs, for: gap).score
+                
+            case .nearestNeighbor:
+                return findNearestPair(in: sortedPairs, for: gap).score
+                
+            case .threshold:
+                // Find the largest gap that is less than or equal to the current gap
+                // This implements the threshold approach where each defined point
+                // represents the start of a range up to the next defined point
+                var thresholdPair = sortedPairs.first!
+                
+                for pair in sortedPairs {
+                    if pair.gap <= gap {
+                        thresholdPair = pair
+                    } else {
+                        break
+                    }
+                }
+                
+                return thresholdPair.score
+                
+            case .defaultValue(let defaultScore):
+                // Use provided default score for undefined gaps
+                return defaultScore
+            }
         }
+    }
+    
+    /// Finds the nearest pair in the sorted array for a given gap value
+    /// - Parameters:
+    ///   - pairs: Sorted array of gap-score pairs
+    ///   - gap: The gap value to find the nearest pair for
+    /// - Returns: The nearest gap-score pair
+    private func findNearestPair(in pairs: [ProfileMatchingConfiguration.GapScorePair], for gap: Double) -> ProfileMatchingConfiguration.GapScorePair {
+        var closestPair = pairs[0]
+        var minDistance = abs(gap - closestPair.gap)
+        
+        for pair in pairs {
+            let distance = abs(gap - pair.gap)
+            if distance < minDistance {
+                minDistance = distance
+                closestPair = pair
+            }
+        }
+        
+        return closestPair
     }
     
     /// Calculate weighted score for a specific set of criteria
@@ -346,3 +448,4 @@ public class ProfileMatching: @unchecked Sendable {
         return totalWeight > 0 ? weightedSum / totalWeight : 0
     }
 }
+
